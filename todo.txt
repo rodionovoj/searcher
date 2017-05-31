@@ -1,0 +1,5 @@
+1. redirect work log output into htmlpanel
+2. correct size of frame
+3. run choosed file by match
+4. make possibility update parser set by UI
+5. do match bold

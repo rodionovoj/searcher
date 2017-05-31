@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+<comment>Parameters for application</comment>
+<entry key="base_folder">/home/oleg/Загрузки</entry>
+<entry key="left_offset">200</entry>
+<entry key="width">200</entry>
+<entry key="max_size">10000000</entry>
+<entry key="right_offset">200</entry>
+<entry key="case_sensitive">false</entry>
+</properties>
