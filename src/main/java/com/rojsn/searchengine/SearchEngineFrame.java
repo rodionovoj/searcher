@@ -1,5 +1,6 @@
 package com.rojsn.searchengine;
 
+import static java.awt.Component.CENTER_ALIGNMENT;
 import javax.swing.JEditorPane;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -16,10 +17,13 @@ import javax.swing.event.TreeSelectionListener;
 import java.net.URL;
 import java.io.IOException;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.BorderFactory;
 import javax.swing.GroupLayout;
 import static javax.swing.GroupLayout.Alignment.BASELINE;
@@ -31,6 +35,9 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JTextField;
 import javax.swing.SwingConstants;
+import javax.swing.SwingWorker;
+import javax.swing.text.html.HTMLDocument;
+import javax.swing.text.html.StyleSheet;
 
 public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
 
@@ -61,7 +68,7 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
 
     public SearchEngineFrame() {
         initComponents();
-        new SearchData();
+//        new SearchData();
     }
 
     private void initComponents() {
@@ -69,6 +76,7 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
 //        UIManager.addPropertyChangeListener(new UISwitchListener((JComponent) getRootPane()));
         mainSplitPanel = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         Dimension dim = Toolkit.getDefaultToolkit().getScreenSize();
+        dim.setSize(1400, 800);
         mainSplitPanel.setPreferredSize(dim);
         cbCaseSensitive.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         cbCaseSensitive.setSelected(SearchEngine.isCaseSensitiveValue());
@@ -76,8 +84,7 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
         cbBackward.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         cbBackward.addActionListener(new NotImplementedYet());
         cbWholeWords.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        cbWholeWords.addActionListener(new NotImplementedYet());
-        btnCancel.addActionListener(new Cancel());
+        cbWholeWords.addActionListener(new WholeWord());
 //        textField.addKeyListener(new DoByEnter());
 
         //Create the nodes.
@@ -173,8 +180,18 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
 
         //Create the HTML viewing pane.
         htmlPane = new JEditorPane();
-        htmlPane.setEditable(true);
+        htmlPane.setEditable(false);
 //        initHelp();//todo roj
+        Font font = new Font(Font.MONOSPACED, Font.PLAIN, 24);
+        htmlPane.setFont(font);
+        htmlPane.setOpaque(true);
+        htmlPane.setContentType("text/html");
+
+        final HTMLDocument document = (HTMLDocument) htmlPane.getDocument();
+        final StyleSheet styleSheet = document.getStyleSheet();
+        styleSheet.addRule("body {color:#000; font-family:times; margin: 4px; }");
+        styleSheet.addRule("span {font-weight: bold; font-style: italic; font : 12px; color : red; background-color : yellow; }");
+
         JScrollPane htmlView = new JScrollPane(htmlPane);
         mainSplitPanel.setLeftComponent(splitPane);
         mainSplitPanel.setRightComponent(htmlView);
@@ -213,12 +230,12 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
         }
     }
 
-    private class SearchData implements ActionListener {
+    private class SearchData extends SwingWorker implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
             SearchEngine se = new SearchEngine();
-            EngineTimer.start();
+            EngineTimer.start();           
             DefaultMutableTreeNode top = new DefaultMutableTreeNode(baseFolder.getText());
             File baseFile = new File(baseFolder.getText());
             if (textField.getText().equals("")) {
@@ -228,7 +245,6 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
                 if (baseFile.isDirectory()) {
                     se.fillOperatedFileNames(baseFile, textField.getText());
                     SearchEngine.setCaseSensitiveValue(cbCaseSensitive.isSelected());
-//                    se.fillOperatedFileNames(baseFile, textField.getText(), cbCaseSensitive.isSelected());
                 }
                 se.createNodes(top);
                 tree = new JTree(top);
@@ -240,6 +256,11 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
             }
             EngineTimer.end();
         }
+
+        @Override
+        protected Object doInBackground() throws Exception {
+            throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        }
     }
 
     private class CaseSensitive implements ActionListener {
@@ -249,21 +270,20 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
             XMLUtils.saveProperty("case_sensitive", "" + cbCaseSensitive.isSelected());
         }
     }
+
+    private class WholeWord implements ActionListener {
+
+        @Override
+        public void actionPerformed(ActionEvent e) {            
+            XMLUtils.saveProperty("whole_word", "" + cbWholeWords.isSelected());
+        }
+    }
     
     private class NotImplementedYet implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
             JOptionPane.showMessageDialog(null, "Еще не реализовано!", "Error Massage", JOptionPane.ERROR_MESSAGE);
-        }
-
-    }
-    
-    private class Cancel implements ActionListener {
-
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            SearchEngine.workAllowed = false;
         }
 
     }
@@ -392,38 +412,37 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
 
     private void displayMatch(FormattedMatch match) {
         if (match != null) {            
-//            try {
-                 htmlPane.setText(match.getTextMatch());
-//            } catch (IOException ex) {
-//                Logger.getLogger(SearchEngineFrame.class.getName()).log(Level.SEVERE, null, ex);
-//            }
+            htmlPane.setText(match.getTextMatch());
         } else { //null url
             htmlPane.setText("File Not Found");
         }
     }
 
-    /**
-     * Create the GUI and show it. For thread safety, this method should be
-     * invoked from the event dispatch thread.
-     */
+    private void displayMatchAsUrl(FormattedMatch match) {
+        if (match != null) {            
+            try {
+//                htmlPane.setText(match.getTextMatch());
+                htmlPane.setPage(match.getUrl());
+            } catch (IOException ex) {
+                Logger.getLogger(SearchEngineFrame.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        } else { //null url
+            htmlPane.setText("File Not Found");
+        }
+    }
+
     private static void createAndShowGUI() {
         if (useSystemLookAndFeel) {
             try {
                 UIManager.setLookAndFeel(
-//                        UIManager.getCrossPlatformLookAndFeelClassName());
-                UIManager.getSystemLookAndFeelClassName());
+                        UIManager.getCrossPlatformLookAndFeelClassName());
             } catch (Exception e) {
                 System.err.println("Couldn't use system look and feel.");
             }
         }
-
-        //Create and set up the window.
         JFrame frame = new JFrame("Поиск документов ERIB");
-//        setCenterPosition(frame);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        //Add content to the window.
         frame.add(new SearchEngineFrame());
-        //Display the window.
         frame.pack();
         frame.setVisible(true);
     }
@@ -465,8 +484,6 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
     }
 
     public static void main(String[] args) {
-        //Schedule a job for the event dispatch thread:
-        //creating and showing this application's GUI.
         javax.swing.SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
