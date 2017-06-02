@@ -1,15 +1,10 @@
 package com.rojsn.searchengine;
 
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.URL;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -28,19 +23,10 @@ import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.sax.BodyContentHandler;
 import org.xml.sax.SAXException;
 import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 public class SearchEngine {
 
-    public static boolean isCaseSensitiveValue() {
-        return CASE_SENSITIVE_VALUE;
-    }
-
-    public static void setCaseSensitiveValue(boolean aCASE) {
-        CASE_SENSITIVE_VALUE = aCASE;
-    }
-
-    private static final Logger LOG = LogManager.getLogger(SearchEngine.class);
+    private static final org.apache.logging.log4j.Logger LOG = LogManager.getLogger(SearchEngine.class);
     public static final String BASE_DOC_FOLDER = "base_folder";
     public static String BASE_FOLDER;
     private int LEFT_OFFSET_SEARCH;
@@ -54,10 +40,37 @@ public class SearchEngine {
     private static String encoding = "windows-1251";
     private Map<String, List<FormattedMatch>> mapOfFiles = new HashMap<>();
     private static boolean CASE_SENSITIVE_VALUE = true;
+    private static boolean WHOLE_WORD_VALUE = true;
     private final String CASE_SENSITIVE = "case_sensitive";
-    private static int fileNumber;
-    private Map extentionMap = new HashMap();
-    static boolean workAllowed = false;
+    private final String WHOLE_WORD = "whole_word";    
+    private final String whitespace_chars =  ""       /* dummy empty string for homogeneity */
+                        + "\\u0009" // CHARACTER TABULATION
+                        + "\\u000A" // LINE FEED (LF)
+                        + "\\u000B" // LINE TABULATION
+                        + "\\u000C" // FORM FEED (FF)
+                        + "\\u000D" // CARRIAGE RETURN (CR)
+                        + "\\u0020" // SPACE
+                        + "\\u0085" // NEXT LINE (NEL) 
+                        + "\\u00A0" // NO-BREAK SPACE
+                        + "\\u1680" // OGHAM SPACE MARK
+                        + "\\u180E" // MONGOLIAN VOWEL SEPARATOR
+                        + "\\u2000" // EN QUAD 
+                        + "\\u2001" // EM QUAD 
+                        + "\\u2002" // EN SPACE
+                        + "\\u2003" // EM SPACE
+                        + "\\u2004" // THREE-PER-EM SPACE
+                        + "\\u2005" // FOUR-PER-EM SPACE
+                        + "\\u2006" // SIX-PER-EM SPACE
+                        + "\\u2007" // FIGURE SPACE
+                        + "\\u2008" // PUNCTUATION SPACE
+                        + "\\u2009" // THIN SPACE
+                        + "\\u200A" // HAIR SPACE
+                        + "\\u2028" // LINE SEPARATOR
+                        + "\\u2029" // PARAGRAPH SEPARATOR
+                        + "\\u202F" // NARROW NO-BREAK SPACE
+                        + "\\u205F" // MEDIUM MATHEMATICAL SPACE
+                        + "\\u3000" // IDEOGRAPHIC SPACE
+                        ;        
 
     public SearchEngine() {
         init();
@@ -69,7 +82,7 @@ public class SearchEngine {
 
     private void init() {
         try {
-            InputStream cfg = new FileInputStream("config.xml");
+            InputStream cfg = new FileInputStream("app-config.xml");
             Properties pref = new Properties();
             pref.loadFromXML(cfg);
             BASE_FOLDER = (String) pref.getProperty(BASE_DOC_FOLDER);
@@ -77,9 +90,9 @@ public class SearchEngine {
             RIGHT_OFFSET_SEARCH = Integer.parseInt((String) pref.getProperty(RIGHT_OFFSET, "200"));
             MAX_SIZE_OF_TEXT = Integer.parseInt((String) pref.getProperty(MAX_SIZE, "10000000"));
             encoding = System.lineSeparator().equals("\r\n") ? "windows-1251" : "UTF-8";
-            setCaseSensitiveValue(Boolean.parseBoolean((String) pref.getProperty(CASE_SENSITIVE, "true")));
-            workAllowed = true;
-
+            CASE_SENSITIVE_VALUE = Boolean.parseBoolean((String) pref.getProperty(CASE_SENSITIVE));
+            WHOLE_WORD_VALUE = Boolean.parseBoolean((String) pref.getProperty(WHOLE_WORD));
+            mapOfFiles.clear();
         } catch (IOException | NumberFormatException e) {
             LOG.error("count=" + e.getMessage());
         }
@@ -89,31 +102,23 @@ public class SearchEngine {
         SearchEngine we = new SearchEngine();
         we.init();
         File baseFile = new File(BASE_FOLDER);
-
         if (baseFile.isDirectory()) {
             we.fillOperatedFileNames(baseFile, "чебурек");
         }
     }
 
     public void fillOperatedFileNames(File baseFile, String regexp) {
-        
         List<File> list = Arrays.asList(baseFile.listFiles());
-        if (workAllowed) {
-            for (File file : list) {
-                if (file.isFile()) {
-                    fileNumber++;
-                    System.out.println("fileNumber = " + fileNumber);
-                    System.out.println("extension = " + getExtention(file.getName()));
-                    fillExtentionMap(getExtention(file.getName()));
-                    extractContentDocx(new ArrayList<>(), file.getAbsolutePath(), regexp);
-                } else {
-                    fillOperatedFileNames(file.getAbsoluteFile(), regexp);
-                }
+        list.forEach((file) -> {
+            if (file.isFile()) {
+                extractContent(new ArrayList<>(), file.getAbsolutePath(), regexp);
+            } else {
+                fillOperatedFileNames(file.getAbsoluteFile(), regexp);
             }
-        }
+        });
     }
 
-    private void extractContentDocx(List<FormattedMatch> list, String fullFileName, String regexp) {
+    private void extractContent(List<FormattedMatch> list, String fullFileName, String regexp) {
         try {
             search(list, regexp, fullFileName);
         } catch (IOException | SAXException | TikaException e) {
@@ -122,11 +127,18 @@ public class SearchEngine {
     }
 
     private void search(List<FormattedMatch> matches, String regexp, String fileName) throws UnsupportedEncodingException, IOException, SAXException, TikaException {
-        String text = parseToPlainText(fileName);
-        Pattern pattern = Pattern.compile(CASE_SENSITIVE_VALUE ? regexp : regexp.toUpperCase());
-        Matcher matcher = pattern.matcher(CASE_SENSITIVE_VALUE ? text : text.toUpperCase());
-        String startHTML = "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"></head><body>";
-        String endHTML = "</body></html>";
+        String text = parseToPlainText(fileName);        
+       // init();
+        Pattern pattern = null;
+        if (WHOLE_WORD_VALUE) {
+            regexp = "\\\\u0020" + regexp + "\\\\u0020";
+        }
+        if (!CASE_SENSITIVE_VALUE) {
+            pattern = Pattern.compile(regexp, Pattern.CASE_INSENSITIVE | Pattern.MULTILINE | Pattern.UNICODE_CASE);
+        } else {           
+            pattern = Pattern.compile(regexp);
+        }
+        Matcher matcher = pattern.matcher(text);
         int index = 1;
         while (matcher.find()) {
             FormattedMatch fm = new FormattedMatch();
@@ -138,22 +150,11 @@ public class SearchEngine {
             } else {
                 dd = text.substring(fm.getStart(), fm.getEnd());
             }
-            String ddd = dd.replace(regexp, "<b><i>" + regexp + "</i></b>");
-            fm.setTextMatch(startHTML + ddd + endHTML);
-//            fm.setTextMatch(startHTML + "<a href=\"" + dd + "\">" + dd + "</a>" + endHTML);
-
-            try (BufferedWriter bw = new BufferedWriter(new FileWriter("FILENAME.html"))) {
-                bw.write(startHTML + ddd + endHTML);
-
-//            } catch (FileAlreadyExistsException x) {
-//                System.err.format("file named %s"
-//                        + " already exists%n", fileName);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            URL u = new File("FILENAME.html").toURL();
-            fm.setUrl(u);
-            fm.setTextMatch(dd);
+            String ddd = dd.replaceAll(regexp, "<span>" + regexp + "</span>");
+//            StringBuffer sb = new StringBuffer(dd);            
+//            sb.insert(dd.indexOf(regexp), "<span>");
+//            sb.insert(dd.indexOf(regexp) + regexp.length(), "</span>");
+            fm.setTextMatch(ddd);
             fm.setIndex(index);
             matches.add(fm);
             index++;
@@ -187,6 +188,10 @@ public class SearchEngine {
             top.add(document);
         }
     }
+    
+    boolean isEmpty() {
+        return mapOfFiles.isEmpty();
+    }
 
     public String parseToPlainText(String fileName) throws IOException, SAXException, TikaException {
         TikaConfig tikaConfig = new TikaConfig("tika-config.xml");
@@ -199,20 +204,25 @@ public class SearchEngine {
         }
     }
 
-    private String getExtention(String name) {
-        int position = name.lastIndexOf(".");
-        if (position > 0) {
-            return name.substring(position + 1);
-        } else {
-            return "";
-        }        
+    /**
+     * @return the WHOLE_WORD_VALUE
+     */
+    public static boolean isWholeWordValue() {
+        return WHOLE_WORD_VALUE;
     }
 
-    private void fillExtentionMap(String extension) {
-        String extentionNumber = (String) extentionMap.get(extension);
-        if (extentionNumber == null) {
-            extentionNumber = "0";
-        }
-        extentionMap.put(extension , String.valueOf(Integer.parseInt(extentionNumber)+1));        
+    /**
+     * @param aWHOLE_WORD_VALUE the WHOLE_WORD_VALUE to set
+     */
+    public static void setWholewWordValue(boolean aWHOLE_WORD_VALUE) {
+        WHOLE_WORD_VALUE = aWHOLE_WORD_VALUE;
+    }
+
+    public static boolean isCaseSensitiveValue() {
+        return CASE_SENSITIVE_VALUE;
+    }
+
+    public static void setCaseSensitiveValue(boolean aCASE) {
+        CASE_SENSITIVE_VALUE = aCASE;
     }
 }
