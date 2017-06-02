@@ -245,8 +245,12 @@ public class SearchEngineFrame extends JPanel implements TreeSelectionListener {
                 if (baseFile.isDirectory()) {
                     se.fillOperatedFileNames(baseFile, textField.getText());
                     SearchEngine.setCaseSensitiveValue(cbCaseSensitive.isSelected());
+                    SearchEngine.setWholewWordValue(cbWholeWords.isSelected());
                 }
                 se.createNodes(top);
+                if(se.isEmpty()) {
+                      htmlPane.setText("");
+                }
                 tree = new JTree(top);
                 tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
                 //Listen for when the selection changes.
